@@ -28081,4 +28081,8 @@ Do not render = "none"
   z-index: 1000001;
 }
 
+.w-75 {
+  width: 75%;
+}
+
 /*# sourceMappingURL=theme.compiled.css.map */
