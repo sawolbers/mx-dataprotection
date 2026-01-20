@@ -14,10 +14,11 @@ import com.mendix.systemwideinterfaces.core.UserAction;
 import net.datafaker.Faker;
 import java.util.Locale;
 import java.util.Random;
+import dataprotection.impl.DataFakerImpl;
 
 public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 {
-	private final dataprotection.proxies.Enum_Mode Mode;
+	private final dataprotection.proxies.Enum_GenerationMethod Mode;
 	private final java.lang.String Input;
 	private final java.lang.String Locale;
 	private final java.lang.Long Seed;
@@ -31,7 +32,7 @@ public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 	)
 	{
 		super(context);
-		this.Mode = _mode == null ? null : dataprotection.proxies.Enum_Mode.valueOf(_mode);
+		this.Mode = _mode == null ? null : dataprotection.proxies.Enum_GenerationMethod.valueOf(_mode);
 		this.Input = _input;
 		this.Locale = _locale;
 		this.Seed = _seed;
@@ -41,35 +42,12 @@ public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 	public java.lang.String executeAction() throws Exception
 	{
 		// BEGIN USER CODE
-		// Mode is an enum in Mendix. We assume it has at least: PROVIDER_PATH and EXPRESSION.
-		// "Input" is the selected enum caption/value (already validated), e.g. "internet.emailAddress" or "bothify('USR-####')".
-
-		final String input = (this.Input == null) ? "" : this.Input.trim();
-		if (input.isEmpty()) {
-			throw new IllegalArgumentException("Input is empty.");
-		}
-
-		// Locale (optional)
-		final java.util.Locale localeObj = (this.Locale == null || this.Locale.trim().isEmpty())
-				? java.util.Locale.getDefault()
-				: java.util.Locale.forLanguageTag(this.Locale.trim());
-
-		// Faker (deterministic if Seed provided)
-		final net.datafaker.Faker faker = (this.Seed == null)
-				? new net.datafaker.Faker(localeObj)
-				: new net.datafaker.Faker(localeObj, new java.util.Random(this.Seed));
-
-		// Execute
-		switch (this.Mode) {
-			case PROVIDER:
-				return generateByProviderPathReflection(faker, input);
-
-			case EXPRESSION:
-				return safeToString(faker.expression(input));
-
-			default:
-				throw new IllegalArgumentException("Unsupported Mode: " + String.valueOf(this.Mode));
-		}
+		return DataFakerImpl.generate(
+				this.Input,
+				this.Mode,
+				this.Locale,
+				this.Seed
+		);
 		// END USER CODE
 	}
 
@@ -84,72 +62,5 @@ public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 	}
 
 	// BEGIN EXTRA CODE
-	private static String safeToString(Object o) {
-		return o == null ? "" : String.valueOf(o);
-	}
-
-	/**
-	 * Resolves provider paths of the form "<provider>.<method>" using reflection:
-	 *   "internet.emailAddress" => faker.internet().emailAddress()
-	 *
-	 * Constraints (by design):
-	 * - exactly 2 segments: provider.method
-	 * - no method arguments
-	 * - provider must be allow-listed (safe default)
-	 */
-	private static String generateByProviderPathReflection(net.datafaker.Faker faker, String providerPath) {
-		final String[] parts = providerPath.split("\\.");
-		if (parts.length != 2) {
-			throw new IllegalArgumentException(
-				"ProviderPath must be '<provider>.<method>' (2 segments), e.g. 'internet.emailAddress'. Got: " + providerPath
-			);
-		}
-
-		final String providerName = parts[0].trim();
-		final String methodName = parts[1].trim();
-
-		if (providerName.isEmpty() || methodName.isEmpty()) {
-			throw new IllegalArgumentException("Invalid ProviderPath: " + providerPath);
-		}
-
-		// Safety gate: restrict what can be invoked (extend as needed)
-		if (!isAllowedProvider(providerName)) {
-			throw new IllegalArgumentException("Provider not allowed: " + providerName);
-		}
-
-		try {
-			// faker.<provider>()
-			final Object provider = faker.getClass().getMethod(providerName).invoke(faker);
-
-			// provider.<method>()
-			final Object value = provider.getClass().getMethod(methodName).invoke(provider);
-
-			return safeToString(value);
-
-		} catch (NoSuchMethodException e) {
-			throw new IllegalArgumentException("Unknown provider or method for ProviderPath: " + providerPath, e);
-		} catch (Exception e) {
-			throw new RuntimeException("Error invoking ProviderPath: " + providerPath, e);
-		}
-	}
-
-	private static boolean isAllowedProvider(String providerName) {
-		switch (providerName) {
-			// Common PII / demo content
-			case "name":
-			case "internet":
-			case "address":
-			case "phoneNumber":
-			case "company":
-			case "lorem":
-			// Handy extras (uncomment if you want them)
-			// case "number":
-			// case "dateAndTime":
-			// case "idNumber":
-				return true;
-			default:
-				return false;
-		}
-	}
 	// END EXTRA CODE
 }

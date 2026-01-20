@@ -14,6 +14,7 @@ import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.IMendixObject;
 import com.mendix.systemwideinterfaces.core.IMendixObjectMember;
 import com.mendix.systemwideinterfaces.core.UserAction;
+import dataprotection.impl.DataFakerImpl;
 
 public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang.Long>
 {
@@ -247,12 +248,12 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			}
 
 			case GENERATE: {
-				final dataprotection.proxies.Enum_Mode gm = rule.getMode(); // your GenerateMode enum
+				final dataprotection.proxies.Enum_GenerationMethod gm = rule.getGenerationMethod(); // your GenerateMode enum
 				if (gm == null) {
 					throw new IllegalArgumentException("Generate Mode is null for attribute " + rule.getAttributeName());
 				}
 
-				final String input = trimToNull(rule.getInput());
+				final String input = trimToNull(rule.getTemplateExpression());
 				if (input == null) {
 					throw new IllegalArgumentException("Input is empty for attribute " + rule.getAttributeName());
 				}
@@ -277,30 +278,11 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 	private static String generateWithFaker(
 			String input,
-			dataprotection.proxies.Enum_Mode gm,
+			dataprotection.proxies.Enum_GenerationMethod gm,
 			String localeTag,
 			Long seed
 	) throws Exception {
-
-		final java.util.Locale loc = (localeTag == null || localeTag.isBlank())
-				? java.util.Locale.getDefault()
-				: java.util.Locale.forLanguageTag(localeTag);
-
-		final net.datafaker.Faker faker = (seed == null)
-				? new net.datafaker.Faker(loc)
-				: new net.datafaker.Faker(loc, new java.util.Random(seed));
-
-		// Align these enum values to your GenerateMode enum (Enum_Mode)
-		// Common: PROVIDER / EXPRESSION
-		switch (gm) {
-			case PROVIDER:
-				return generateByProviderPathReflection(faker, input);
-			case EXPRESSION:
-				Object o = faker.expression(input);
-				return o == null ? "" : String.valueOf(o);
-			default:
-				throw new IllegalArgumentException("Unsupported Generate Mode: " + gm);
-		}
+    	return DataFakerImpl.generate(input, gm, localeTag, seed);
 	}
 
 	private static String ensureUnique(String attrName, String value, String objectId, java.util.Set<String> used) {
@@ -391,46 +373,5 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		}
 	}
 
-	/**
-	 * Reflection resolver: "<provider>.<method>" => faker.provider().method()
-	 * Supports only 2 segments and no-arg methods (safe + fast enough).
-	 */
-	private static String generateByProviderPathReflection(net.datafaker.Faker faker, String providerPath) {
-		final String[] parts = providerPath.split("\\.");
-		if (parts.length != 2) {
-			throw new IllegalArgumentException("ProviderPath must be '<provider>.<method>'. Got: " + providerPath);
-		}
-
-		final String providerName = parts[0].trim();
-		final String methodName = parts[1].trim();
-
-		if (!isAllowedProvider(providerName)) {
-			throw new IllegalArgumentException("Provider not allowed: " + providerName);
-		}
-
-		try {
-			final Object provider = faker.getClass().getMethod(providerName).invoke(faker);
-			final Object value = provider.getClass().getMethod(methodName).invoke(provider);
-			return value == null ? "" : String.valueOf(value);
-		} catch (NoSuchMethodException e) {
-			throw new IllegalArgumentException("Unknown provider or method: " + providerPath, e);
-		} catch (Exception e) {
-			throw new RuntimeException("Error invoking ProviderPath: " + providerPath, e);
-		}
-	}
-
-	private static boolean isAllowedProvider(String providerName) {
-		switch (providerName) {
-			case "name":
-			case "internet":
-			case "address":
-			case "phoneNumber":
-			case "company":
-			case "lorem":
-				return true;
-			default:
-				return false;
-		}
-	}
 	// END EXTRA CODE
 }
