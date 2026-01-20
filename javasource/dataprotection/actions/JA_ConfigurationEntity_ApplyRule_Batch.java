@@ -371,9 +371,9 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		if (level == null) return currentValue;
 
 		if (currentValue instanceof java.util.Date d) {
-			java.util.Calendar cal = java.util.Calendar.getInstance();
-			cal.setTime(d);
-			cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+			java.util.Calendar cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
+       		cal.setTime(d);
+			cal.set(java.util.Calendar.HOUR_OF_DAY, 12);
 			cal.set(java.util.Calendar.MINUTE, 0);
 			cal.set(java.util.Calendar.SECOND, 0);
 			cal.set(java.util.Calendar.MILLISECOND, 0);
