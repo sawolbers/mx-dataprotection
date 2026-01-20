@@ -1,5 +1,8 @@
 package dataprotection.impl;
 
+import com.mendix.systemwideinterfaces.core.IContext;
+import com.mendix.systemwideinterfaces.core.IMendixObjectMember;
+
 public final class DataFakerImpl {
 
     private DataFakerImpl() {}
@@ -90,5 +93,34 @@ public final class DataFakerImpl {
             default:
                 return false;
         }
+    }
+
+    public static String deterministicInputFromValue(
+            IContext ctx,
+            IMendixObjectMember<?> member
+    ) {
+        final Object value = member.getValue(ctx);
+        if (value == null) {
+            throw new IllegalArgumentException(
+                "Deterministic rule requires non-null value for attribute " + member.getName()
+            );
+        }
+        return member.getName() + "=" + value.toString();
+    }
+
+    private static boolean isEmptyOriginalValue(IContext ctx, IMendixObjectMember<?> member) {
+        final Object v = member.getValue(ctx);
+        if (v == null) return true;
+        if (v instanceof String) return ((String) v).trim().isEmpty();
+        return false;
+    }
+
+    private static Object emptyOriginalValue(IContext ctx, IMendixObjectMember<?> member) {
+        final Object v = member.getValue(ctx);
+        if (v == null) return null;
+        // preserve empty string as empty string
+        if (v instanceof String) return ((String) v);
+        // non-string can't really be "empty", only null
+        return null;
     }
 }

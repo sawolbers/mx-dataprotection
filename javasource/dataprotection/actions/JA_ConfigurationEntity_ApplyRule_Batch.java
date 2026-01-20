@@ -10,6 +10,7 @@
 package dataprotection.actions;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.IMendixObject;
 import com.mendix.systemwideinterfaces.core.IMendixObjectMember;
@@ -48,7 +49,6 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		// BEGIN USER CODE
 		final com.mendix.systemwideinterfaces.core.IContext ctx = getContext();
 
-		// TODO: set this to the actual field name generated in your skeleton.
 		// It will be something like: this.ConfigurationEntity, this.configurationEntity, this._configurationEntity, etc.
 		final dataprotection.proxies.ConfigurationEntity cfgEntity = this.InputEntity;
 
@@ -65,7 +65,6 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		final dataprotection.proxies.ConfigurationSet cfgSet = cfgEntity.getConfigurationEntity_ConfigurationSet();
 
 		final String localeTag = (cfgSet != null) ? trimToNull(cfgSet.getDefaultLocale()) : null;
-		final boolean deterministic = (cfgSet != null) && Boolean.TRUE.equals(cfgSet.getDeterministic());
 
 		// Salt comes from a constant (as you said)
 		final String salt = getConstantStringOrEmpty("DataProtection.Salt");
@@ -127,7 +126,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 				final Object newValue = generateValueForRule(
 						ctx, obj, member, rule,
-						localeTag, deterministic, salt, usedUnique
+						localeTag, salt, usedUnique
 				);
 
 				if (newValue == KEEP_SENTINEL) continue;
@@ -219,13 +218,34 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member,
 			dataprotection.proxies.ConfigurationAttribute rule,
 			String localeTag,
-			boolean deterministic,
 			String salt,
 			java.util.Set<String> usedUnique
 	) throws Exception {
 
 		// Your RuleType enum is: KEEP, CLEAR, GENERATE, HASH, GENERALIZE
 		final dataprotection.proxies.Enum_RuleType ruleType = rule.getRuleType();
+		final boolean deterministic = Boolean.TRUE.equals(rule.getDeterministic(ctx));
+		final boolean unique = Boolean.TRUE.equals(rule.getUnique());
+
+		if (ruleType == dataprotection.proxies.Enum_RuleType.GENERATE && deterministic && unique) {
+			throw new IllegalArgumentException(
+				"GENERATE rule cannot be both deterministic and unique for attribute " + rule.getAttributeName()
+			);
+		}
+
+		final Object originalValue = member.getValue(ctx);
+		final boolean isEmpty =
+			originalValue == null ||
+			(originalValue instanceof String && ((String) originalValue).trim().isEmpty());
+
+		final Long seed;
+		if (deterministic && !isEmpty) {
+			final String detInput = member.getName() + "=" + originalValue.toString(); // value-based determinism, stable across env/imports
+			seed = deterministicSeed(salt, detInput);
+		} else {
+			seed = null;
+		}
+
 		if (ruleType == null) return KEEP_SENTINEL;
 
 		switch (ruleType) {
@@ -235,9 +255,20 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			case CLEAR:
 				return null;
 
-			case HASH: {
-				// Stable token derived from salt + objectId + attribute
-				final String token = "TOK_" + Long.toHexString(deterministicSeed(salt, obj.getId().toString(), rule.getAttributeName()));
+			case FIXED: {
+				final String fixedValue = trimToNull(rule.getFixedValue());
+				return coerceToMemberType(member, fixedValue);
+			}
+
+			case HASH: {				
+				if (isEmpty) {
+					return originalValue; // null or ""
+				}
+
+				final String token = deterministic
+						? "DP_" + Long.toHexString(seed)
+						: "DP_" + Long.toHexString(ThreadLocalRandom.current().nextLong());
+
 				return coerceToMemberType(member, token);
 			}
 
@@ -248,6 +279,10 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			}
 
 			case GENERATE: {
+				if (isEmpty) {
+					return originalValue;
+				}
+
 				final dataprotection.proxies.Enum_GenerationMethod gm = rule.getGenerationMethod(); // your GenerateMode enum
 				if (gm == null) {
 					throw new IllegalArgumentException("Generate Mode is null for attribute " + rule.getAttributeName());
@@ -258,14 +293,15 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 					throw new IllegalArgumentException("Input is empty for attribute " + rule.getAttributeName());
 				}
 
-				final Long seed = deterministic
-						? deterministicSeed(salt, obj.getId().toString(), rule.getAttributeName())
-						: null;
+				final String generated = generateWithFaker(
+						input,
+						gm,
+						localeTag,
+						seed
+				);
 
-				final String generated = generateWithFaker(input, gm, localeTag, seed);
-
-				final String out = Boolean.TRUE.equals(rule.getUnique())
-						? ensureUnique(rule.getAttributeName(), generated, obj.getId().toString(), usedUnique)
+				final String out = unique
+						? ensureUnique(rule.getAttributeName(), generated, originalValue.toString(), usedUnique)
 						: generated;
 
 				return coerceToMemberType(member, out);
@@ -360,8 +396,8 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		return currentValue;
 	}
 
-	private static long deterministicSeed(String salt, String objectId, String attributeName) {
-		final String s = (salt == null ? "" : salt) + "|" + objectId + "|" + attributeName;
+	private static long deterministicSeed(String salt, String detInput) {
+		final String s = (salt == null ? "" : salt) + "|" + detInput;
 		try {
 			final java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
 			final byte[] h = md.digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
