@@ -48,8 +48,6 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 	{
 		// BEGIN USER CODE
 		final com.mendix.systemwideinterfaces.core.IContext ctx = getContext();
-
-		// It will be something like: this.ConfigurationEntity, this.configurationEntity, this._configurationEntity, etc.
 		final dataprotection.proxies.ConfigurationEntity cfgEntity = this.InputEntity;
 
 		if (cfgEntity == null) {
@@ -61,25 +59,15 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			throw new IllegalArgumentException("ConfigurationEntity.EntityName is empty");
 		}
 
-		// Parent config set (for locale/deterministic)
-		final dataprotection.proxies.ConfigurationSet cfgSet = cfgEntity.getConfigurationEntity_ConfigurationSet();
-
-		final String localeTag = (cfgSet != null) ? trimToNull(cfgSet.getDefaultLocale()) : null;
-
-		// Salt comes from a constant (as you said)
-		final String salt = getConstantStringOrEmpty("DataProtection.Salt");
-
-		// Offset / batch size inputs in your action appear to be Long based on compile errors
-		final long offsetL = (this.Offset == null || this.Offset < 0L) ? 0L : this.Offset;
+		final dataprotection.proxies.ConfigurationSet cfgSet = cfgEntity.getConfigurationEntity_ConfigurationSet(); // Parent config set (for locale/deterministic)
+		final String localeTag = (cfgSet != null) ? trimToNull(cfgSet.getDefaultLocale()) : null;		
+		final String salt = getConstantStringOrEmpty("DataProtection.Salt"); // Salt comes from a constant
+		final long offsetL = (this.Offset == null || this.Offset < 0L) ? 0L : this.Offset; // Offset / batch size are Long based
 		final int offset = safeLongToInt(offsetL, "Offset");
-
 		final long batchSizeL = (this.BatchSize == null || this.BatchSize <= 0L) ? 1000L : this.BatchSize;
 		final int batchSize = safeLongToInt(batchSizeL, "BatchSize");
-
 		final boolean commitWithoutEvents = (this.CommitWithoutEvents == null) ? true : this.CommitWithoutEvents;
-
-		// Load active rules for this entity (ConfigurationAttribute is the owner, so retrieve via XPath)
-		final java.util.List<dataprotection.proxies.ConfigurationAttribute> rules = new java.util.ArrayList<>();
+		final java.util.List<dataprotection.proxies.ConfigurationAttribute> rules = new java.util.ArrayList<>(); // Load active rules for this entity via XPath
 
 		final String ruleXpath =
 				"//" + dataprotection.proxies.ConfigurationAttribute.entityName
@@ -98,10 +86,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			return 0L;
 		}
 
-		// Build XPath and retrieve batch
-		final String xpath = buildXPath(entityName, cfgEntity.getXPathConstraint());
-
-		// Mendix-friendly retrieval (no XPathQuery object needed)
+		final String xpath = buildXPath(entityName, cfgEntity.getXPathConstraint()); // Build XPath and retrieve batch
 		final List<IMendixObject> objects =
     		com.mendix.core.Core.retrieveXPathQuery(ctx, xpath, batchSize, offset, java.util.Collections.emptyMap());
 
@@ -110,52 +95,96 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		}
 
 		// Apply rules
+		final java.util.Map<String, ShuffleBucket> shuffleBuckets = new java.util.HashMap<>();
+		final java.util.Set<com.mendix.systemwideinterfaces.core.IMendixObject> changedObjects = new java.util.HashSet<>();
 		final java.util.Set<String> usedUnique = new java.util.HashSet<>();
-		long changedCount = 0L;
 
 		for (com.mendix.systemwideinterfaces.core.IMendixObject obj : objects) {
-			boolean changed = false;
 
 			for (dataprotection.proxies.ConfigurationAttribute rule : rules) {
 				final String attrName = trimToNull(rule.getAttributeName());
 				if (attrName == null) continue;
 
-				final com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member =
-						safeGetMember(obj, attrName);
+				final com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member = safeGetMember(obj, attrName);
 				if (member == null) continue;
 
+				final dataprotection.proxies.Enum_RuleType ruleType = rule.getRuleType();
+				if (ruleType == null) continue;
+
+				// 1) SHUFFLE is handled in a second pass
+				if (ruleType == dataprotection.proxies.Enum_RuleType.SHUFFLE) {
+					final Object originalValue = member.getValue(ctx);
+					if (isEmptyValue(originalValue)) {						
+						continue; // empty stays empty
+					}
+
+					final boolean det = Boolean.TRUE.equals(rule.getDeterministic(ctx));
+					final String bucketKey = obj.getType() + "|" + attrName; // per entity+attribute
+					final ShuffleBucket bucket = shuffleBuckets.computeIfAbsent(
+						bucketKey,
+						k -> new ShuffleBucket(rule, attrName, det)
+					);
+
+					bucket.targets.add(obj);
+					bucket.values.add(originalValue);
+					continue;
+				}
+
+				// 2) Non-shuffle: apply immediately
 				final Object newValue = generateValueForRule(
-						ctx, obj, member, rule,
-						localeTag, salt, usedUnique
+					ctx, obj, member, rule,
+					localeTag,
+					salt, usedUnique
 				);
 
 				if (newValue == KEEP_SENTINEL) continue;
 
 				final Object typedValue = coerceToMemberType(member, newValue);
-
-				// Optional: only set when different (prevents false "changed")
-				/*final Object oldValue = obj.getValue(ctx, member.getName());
-				if (java.util.Objects.equals(oldValue, typedValue)) {
-					continue;
-				}*/
-
 				obj.setValue(ctx, member.getName(), typedValue);
-				changed = true;
+				changedObjects.add(obj);
+			}
+		}
+
+		for (ShuffleBucket bucket : shuffleBuckets.values()) {
+			if (bucket.values.size() <= 1) continue; // nothing to shuffle
+
+			final java.util.List<Object> shuffled = new java.util.ArrayList<>(bucket.values);
+
+			if (bucket.deterministic) {
+				final String detInput = "SHUFFLE|" + bucket.targets.get(0).getType() + "|" + bucket.attrName;
+				final long seed = deterministicSeed(salt, detInput);
+				java.util.Collections.shuffle(shuffled, new java.util.Random(seed));
+			} else {
+				java.util.Collections.shuffle(shuffled);
 			}
 
-			if (changed) changedCount++;
+			for (int i = 0; i < bucket.targets.size(); i++) {
+				final com.mendix.systemwideinterfaces.core.IMendixObject obj = bucket.targets.get(i);
+				final com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member = safeGetMember(obj, bucket.attrName);
+				if (member == null) continue;
+
+				final Object typedValue = coerceToMemberType(member, shuffled.get(i));
+				obj.setValue(ctx, member.getName(), typedValue);
+				changedObjects.add(obj);
+			}
 		}
 
 		// Commit
+		final long changedCount = changedObjects.size();
+
 		if (changedCount > 0L) {
+			final java.util.List<com.mendix.systemwideinterfaces.core.IMendixObject> toCommit =
+				new java.util.ArrayList<>(changedObjects);
+
 			if (commitWithoutEvents) {
-				com.mendix.core.Core.commitWithoutEvents(ctx, objects);
+				com.mendix.core.Core.commitWithoutEvents(ctx, toCommit);
 			} else {
-				com.mendix.core.Core.commit(ctx, objects);
+				com.mendix.core.Core.commit(ctx, toCommit);
 			}
 		}
 
 		return changedCount;
+
 		// END USER CODE
 	}
 
@@ -409,5 +438,24 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		}
 	}
 
+	private static final class ShuffleBucket {
+		final dataprotection.proxies.ConfigurationAttribute rule;
+		final String attrName;
+		final boolean deterministic;
+		final java.util.List<com.mendix.systemwideinterfaces.core.IMendixObject> targets = new java.util.ArrayList<>();
+		final java.util.List<Object> values = new java.util.ArrayList<>();
+
+		ShuffleBucket(dataprotection.proxies.ConfigurationAttribute rule, String attrName, boolean deterministic) {
+			this.rule = rule;
+			this.attrName = attrName;
+			this.deterministic = deterministic;
+		}
+	}
+
+	private static boolean isEmptyValue(Object v) {
+		if (v == null) return true;
+		if (v instanceof String s) return s.trim().isEmpty();
+		return false;
+	}
 	// END EXTRA CODE
 }
