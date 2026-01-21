@@ -8,16 +8,16 @@ public final class DataFakerImpl {
     private DataFakerImpl() {}
 
     public static String generate(
-            String input,
-            dataprotection.proxies.Enum_GenerationMethod mode,
+            String valueExpression,
+            dataprotection.proxies.Enum_GenerationMethod generationMethod,
             String localeTag,
             Long seed
     ) {
-        final String in = (input == null) ? "" : input.trim();
+        final String in = (valueExpression == null) ? "" : valueExpression.trim();
         if (in.isEmpty()) {
             throw new IllegalArgumentException("Input is empty.");
         }
-        if (mode == null) {
+        if (generationMethod == null) {
             throw new IllegalArgumentException("Mode is null.");
         }
 
@@ -29,7 +29,7 @@ public final class DataFakerImpl {
                 ? new net.datafaker.Faker(loc)
                 : new net.datafaker.Faker(loc, new java.util.Random(seed));
 
-        switch (mode) {
+        switch (generationMethod) {
             case PROVIDER:
                 return generateByProviderPathReflection(faker, in);
 
@@ -37,7 +37,7 @@ public final class DataFakerImpl {
                 return safeToString(faker.expression(in));
 
             default:
-                throw new IllegalArgumentException("Unsupported Mode: " + mode);
+                throw new IllegalArgumentException("Unsupported Mode: " + generationMethod);
         }
     }
 
@@ -51,11 +51,12 @@ public final class DataFakerImpl {
      * - no args
      * - provider allow-list
      */
+    
     private static String generateByProviderPathReflection(net.datafaker.Faker faker, String providerPath) {
         final String[] parts = providerPath.split("\\.");
-        if (parts.length != 2) {
+        if (parts.length < 2) {
             throw new IllegalArgumentException(
-                    "ProviderPath must be '<provider>.<method>' (2 segments), e.g. 'internet.emailAddress'. Got: " + providerPath
+                "ProviderPath must be '<provider>.<method>[.<intArg1>[.<intArg2>...]]', e.g. 'internet.emailAddress' or 'number.numberBetween.1.99'. Got: " + providerPath
             );
         }
 
@@ -65,15 +66,33 @@ public final class DataFakerImpl {
         if (providerName.isEmpty() || methodName.isEmpty()) {
             throw new IllegalArgumentException("Invalid ProviderPath: " + providerPath);
         }
-
         if (!isAllowedProvider(providerName)) {
             throw new IllegalArgumentException("Provider not allowed: " + providerName);
         }
 
+        // Parse int args (if any)
+        final int argCount = parts.length - 2;
+        final Object[] args = new Object[argCount];
+        final Class<?>[] paramTypes = new Class<?>[argCount];
+
+        for (int i = 0; i < argCount; i++) {
+            final String token = parts[i + 2].trim();
+            if (token.isEmpty()) {
+                throw new IllegalArgumentException("Empty argument in ProviderPath: " + providerPath);
+            }
+            try {
+                args[i] = Integer.parseInt(token);
+                paramTypes[i] = int.class;
+            } catch (NumberFormatException nfe) {
+                throw new IllegalArgumentException("Argument must be int. Got '" + token + "' in ProviderPath: " + providerPath, nfe);
+            }
+        }
+
         try {
             final Object provider = faker.getClass().getMethod(providerName).invoke(faker);
-            final Object value = provider.getClass().getMethod(methodName).invoke(provider);
+            final Object value = provider.getClass().getMethod(methodName, paramTypes).invoke(provider, args);
             return safeToString(value);
+
         } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException("Unknown provider or method for ProviderPath: " + providerPath, e);
         } catch (Exception e) {
@@ -89,6 +108,8 @@ public final class DataFakerImpl {
             case "phoneNumber":
             case "company":
             case "lorem":
+            case "number":
+            case "date":
                 return true;
             default:
                 return false;

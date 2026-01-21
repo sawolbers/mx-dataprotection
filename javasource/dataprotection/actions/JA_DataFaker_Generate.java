@@ -16,24 +16,91 @@ import java.util.Locale;
 import java.util.Random;
 import dataprotection.impl.DataFakerImpl;
 
+/**
+ * = Purpose =
+ * Generates a single fake value (String) based on a generation method and a plain-text expression.
+ * Intended for developer use in microflows and test-data utilities.
+ * 
+ * = Parameters =
+ * 
+ * == generationMethod ==
+ * Defines how the expression is interpreted.
+ * Pass the enum name as String (for example: STANDARD, CUSTOM).
+ * If null or unsupported, the action will fail.
+ * 
+ * == templateExpression ==
+ * Plain-text expression describing what value to generate.
+ * Must not be empty. Interpretation depends on generationMethod.
+ * 
+ * == locale ==
+ * Locale used for locale-sensitive generators (names, addresses, etc.).
+ * Use BCP-47 style tags such as en-US or nl-NL.
+ * If empty or null, the default locale is used.
+ * 
+ * == seed ==
+ * Controls determinism.
+ * 
+ * * null: non-deterministic; a new value may be generated on each call
+ * * non-null: deterministic; the same inputs produce the same output
+ * 
+ * For stable results across environments or imports, derive the seed from stable data (not Mendix object IDs).
+ * 
+ * = Output =
+ * Returns the generated value as a String.
+ * Type conversion to the target attribute type must be handled by the caller.
+ * 
+ * = Notes =
+ * 
+ * * This action generates a single value only; uniqueness across records must be enforced in the calling microflow.
+ * * Deterministic output depends on the expression not using time-based or unseeded randomness.
+ * 
+ * More documentation can be found here:
+ * https://www.javadoc.io/doc/com.github.javafaker/javafaker/latest/index.html
+ * 
+ * = Practical starting points (most-used) =
+ * 
+ * Names
+ * name.firstName
+ * name.lastName
+ * name.fullName
+ * 
+ * Addresses
+ * address.city
+ * address.streetName
+ * address.zipCode
+ * address.country
+ * 
+ * Internet
+ * internet.emailAddress
+ * internet.userName
+ * internet.url
+ * 
+ * Numbers
+ * number.randomDigit
+ * number.numberBetween(min,max)
+ * 
+ * Dates
+ * date.birthday
+ * date.past(days)
+ */
 public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 {
-	private final dataprotection.proxies.Enum_GenerationMethod Mode;
-	private final java.lang.String Input;
+	private final dataprotection.proxies.Enum_GenerationMethod GenerationMethod;
+	private final java.lang.String ValueExpression;
 	private final java.lang.String Locale;
 	private final java.lang.Long Seed;
 
 	public JA_DataFaker_Generate(
 		IContext context,
-		java.lang.String _mode,
-		java.lang.String _input,
+		java.lang.String _generationMethod,
+		java.lang.String _valueExpression,
 		java.lang.String _locale,
 		java.lang.Long _seed
 	)
 	{
 		super(context);
-		this.Mode = _mode == null ? null : dataprotection.proxies.Enum_GenerationMethod.valueOf(_mode);
-		this.Input = _input;
+		this.GenerationMethod = _generationMethod == null ? null : dataprotection.proxies.Enum_GenerationMethod.valueOf(_generationMethod);
+		this.ValueExpression = _valueExpression;
 		this.Locale = _locale;
 		this.Seed = _seed;
 	}
@@ -43,8 +110,8 @@ public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 	{
 		// BEGIN USER CODE
 		return DataFakerImpl.generate(
-				this.Input,
-				this.Mode,
+				this.ValueExpression,
+				this.GenerationMethod,
 				this.Locale,
 				this.Seed
 		);
