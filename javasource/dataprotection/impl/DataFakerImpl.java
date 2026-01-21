@@ -7,7 +7,7 @@ public final class DataFakerImpl {
 
     private DataFakerImpl() {}
 
-    public static String generate(
+    public static Object generate(
             String valueExpression,
             dataprotection.proxies.Enum_GenerationMethod generationMethod,
             String localeTag,
@@ -34,7 +34,7 @@ public final class DataFakerImpl {
                 return generateByProviderPathReflection(faker, in);
 
             case EXPRESSION:
-                return safeToString(faker.expression(in));
+                return faker.expression(in);
 
             default:
                 throw new IllegalArgumentException("Unsupported Mode: " + generationMethod);

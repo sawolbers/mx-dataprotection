@@ -139,7 +139,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 				if (newValue == KEEP_SENTINEL) continue;
 
-				final Object typedValue = coerceToMemberType(member, newValue);
+				final Object typedValue = dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), newValue);
 				obj.setValue(ctx, member.getName(), typedValue);
 				changedObjects.add(obj);
 			}
@@ -163,7 +163,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 				final com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member = safeGetMember(obj, bucket.attrName);
 				if (member == null) continue;
 
-				final Object typedValue = coerceToMemberType(member, shuffled.get(i));
+				final Object typedValue = dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), shuffled.get(i));
 				obj.setValue(ctx, member.getName(), typedValue);
 				changedObjects.add(obj);
 			}
@@ -286,7 +286,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 			case FIXED: {
 				final String fixedValue = trimToNull(rule.getFixedValue());
-				return coerceToMemberType(member, fixedValue);
+				return dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), fixedValue);
 			}
 
 			case HASH: {				
@@ -298,13 +298,13 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 						? "DP_" + Long.toHexString(seed)
 						: "DP_" + Long.toHexString(ThreadLocalRandom.current().nextLong());
 
-				return coerceToMemberType(member, token);
+				return dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), token);
 			}
 
 			case GENERALIZE: {
 				final dataprotection.proxies.Enum_GeneralizeLevel level = rule.getGeneralizeLevel();
 				final Object generalized = generalize(member.getValue(ctx), level);
-				return coerceToMemberType(member, generalized);
+				return dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), generalized);
 			}
 
 			case GENERATE: {
@@ -322,18 +322,32 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 					throw new IllegalArgumentException("Input is empty for attribute " + rule.getAttributeName());
 				}
 
-				final String generated = generateWithFaker(
-						input,
-						gm,
-						localeTag,
-						seed
-				);
+				final Object generated = generateWithFaker(input, gm, localeTag, seed);
+				final Object valueForCoercion;
+				final com.mendix.systemwideinterfaces.core.meta.IMetaPrimitive.PrimitiveType primType =
+						com.mendix.core.Core.getMetaObject(obj.getType())
+								.getMetaPrimitive(member.getName())
+								.getType();
 
-				final String out = unique
-						? ensureUnique(rule.getAttributeName(), generated, originalValue.toString(), usedUnique)
-						: generated;
+				if (unique) { // Uniqueness is meaningful for String-like storage					
+					switch (primType) {
+						case String:
+						case HashString:
+						case Enum: {
+							final String genStr = (generated == null) ? "" : String.valueOf(generated);
+							final String objectId = obj.getId().toString(); // preferred, if obj is available
+							valueForCoercion = ensureUnique(rule.getAttributeName(), genStr, objectId, usedUnique);
+							break;
+						}
+						default:
+							valueForCoercion = generated;
+							break;
+					}
+				} else {
+					valueForCoercion = generated;
+				}
 
-				return coerceToMemberType(member, out);
+				return dataprotection.impl.MendixValueCoercer.coerceToMemberType(obj, member.getName(), valueForCoercion);
 			}
 
 			default:
@@ -341,7 +355,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		}
 	}
 
-	private static String generateWithFaker(
+	private static Object generateWithFaker(
 			String input,
 			dataprotection.proxies.Enum_GenerationMethod gm,
 			String localeTag,
@@ -366,7 +380,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		return candidate;
 	}
 
-	private static Object coerceToMemberType(
+	/*private static Object coerceToMemberType(
 			com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> member,
 			Object newValue
 	) {
@@ -392,8 +406,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 		// Fallback: store as string (safe for String-like members; others will throw on set)
 		return String.valueOf(newValue);
-	}
-
+	}*/
 
 	private static Object generalize(Object currentValue, dataprotection.proxies.Enum_GeneralizeLevel level) {
 		if (currentValue == null) return null;

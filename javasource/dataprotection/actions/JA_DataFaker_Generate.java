@@ -109,12 +109,8 @@ public class JA_DataFaker_Generate extends UserAction<java.lang.String>
 	public java.lang.String executeAction() throws Exception
 	{
 		// BEGIN USER CODE
-		return DataFakerImpl.generate(
-				this.ValueExpression,
-				this.GenerationMethod,
-				this.Locale,
-				this.Seed
-		);
+		final Object v = DataFakerImpl.generate(this.ValueExpression, this.GenerationMethod, this.Locale, this.Seed);
+		return (v == null) ? "" : String.valueOf(v);
 		// END USER CODE
 	}
 
