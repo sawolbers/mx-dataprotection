@@ -9,11 +9,14 @@
 
 package dataprotection.actions;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import com.mendix.core.Core;
+import com.mendix.datastorage.XPathBasicQuery;
 import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.IMendixObject;
-import com.mendix.systemwideinterfaces.core.IMendixObjectMember;
 import com.mendix.systemwideinterfaces.core.UserAction;
 import dataprotection.impl.DataFakerImpl;
 
@@ -75,8 +78,8 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			+ " = " + cfgEntity.getMendixObject().getId().toLong() + "]"
 			+ "[Active = true()]";
 
-		final java.util.List<com.mendix.systemwideinterfaces.core.IMendixObject> ruleObjects =
-				com.mendix.core.Core.retrieveXPathQuery(ctx, ruleXpath);
+		final XPathBasicQuery qrule = Core.createXPathQuery(ruleXpath);
+		final List<IMendixObject> ruleObjects = qrule.execute(ctx);
 
 		for (com.mendix.systemwideinterfaces.core.IMendixObject ro : ruleObjects) {
 			rules.add(dataprotection.proxies.ConfigurationAttribute.initialize(ctx, ro));
@@ -86,9 +89,12 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 			return 0L;
 		}
 
-		final String xpath = buildXPath(entityName, cfgEntity.getXPathConstraint()); // Build XPath and retrieve batch
-		final List<IMendixObject> objects =
-    		com.mendix.core.Core.retrieveXPathQuery(ctx, xpath, batchSize, offset, java.util.Collections.emptyMap());
+		final Map<String, String> sort = new HashMap<>();
+		sort.put("id", "ASC");
+		final String xpath = DataFakerImpl.buildXPath(entityName, cfgEntity.getXPathConstraint()); // Build XPath and retrieve batch
+		
+		final XPathBasicQuery qobj = Core.createXPathQuery(xpath).setAmount(batchSize).setOffset(offset);
+		final List<IMendixObject> objects = qobj.execute(ctx);
 
 		if (objects.isEmpty()) {
 			return 0L;
@@ -152,7 +158,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 
 			if (bucket.deterministic) {
 				final String detInput = "SHUFFLE|" + bucket.targets.get(0).getType() + "|" + bucket.attrName;
-				final long seed = deterministicSeed(salt, detInput);
+				final long seed = DataFakerImpl.deterministicSeed(salt, detInput);
 				java.util.Collections.shuffle(shuffled, new java.util.Random(seed));
 			} else {
 				java.util.Collections.shuffle(shuffled);
@@ -214,12 +220,12 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		return (int) v;
 	}
 
-	private static String buildXPath(String entityName, String constraint) {
+	/*private static String buildXPath(String entityName, String constraint) {
 		final String base = "//" + entityName;
 		final String c = (constraint == null) ? "" : constraint.trim();
 		if (c.isEmpty()) return base;
 		return c.startsWith("[") ? (base + c) : (base + "[" + c + "]");
-	}
+	}*/
 
 	private static com.mendix.systemwideinterfaces.core.IMendixObjectMember<?> safeGetMember(
 			com.mendix.systemwideinterfaces.core.IMendixObject obj,
@@ -270,7 +276,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		final Long seed;
 		if (deterministic && !isEmpty) {
 			final String detInput = member.getName() + "=" + originalValue.toString(); // value-based determinism, stable across env/imports
-			seed = deterministicSeed(salt, detInput);
+			seed = DataFakerImpl.deterministicSeed(salt, detInput);
 		} else {
 			seed = null;
 		}
@@ -438,7 +444,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		return currentValue;
 	}
 
-	private static long deterministicSeed(String salt, String detInput) {
+	/*private static long deterministicSeed(String salt, String detInput) {
 		final String s = (salt == null ? "" : salt) + "|" + detInput;
 		try {
 			final java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
@@ -449,7 +455,7 @@ public class JA_ConfigurationEntity_ApplyRule_Batch extends UserAction<java.lang
 		} catch (Exception e) {
 			return s.hashCode();
 		}
-	}
+	}*/
 
 	private static final class ShuffleBucket {
 		final dataprotection.proxies.ConfigurationAttribute rule;

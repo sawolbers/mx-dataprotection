@@ -14,6 +14,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 public final class DataFakerImpl {
 
@@ -90,7 +93,40 @@ public final class DataFakerImpl {
             "Got: " + in
         );
     }
+    
+    public static long deterministicSeed(String... parts) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
 
+            // Domain-separate so this seed algorithm doesn’t collide with other hashes you might use.
+            md.update("DataProtection|DeterministicSeed|v1".getBytes(StandardCharsets.UTF_8));
+
+            if (parts != null) {
+                for (String p : parts) {
+                    byte[] bytes = (p == null ? "" : p).getBytes(StandardCharsets.UTF_8);
+                    // length-prefix to avoid ambiguity: ["ab","c"] != ["a","bc"]
+                    md.update(intToBytes(bytes.length));
+                    md.update(bytes);
+                }
+            }
+
+            byte[] digest = md.digest();
+
+            // First 8 bytes -> long (big-endian)
+            long seed = ByteBuffer.wrap(digest, 0, 8).getLong();
+
+            // Optional: avoid negative seeds if you prefer (Random accepts negative fine)
+            // seed = seed & 0x7fffffffffffffffL;
+
+            return seed;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to compute deterministic seed", e);
+        }
+    }
+
+    private static byte[] intToBytes(int v) {
+        return ByteBuffer.allocate(4).putInt(v).array();
+    }
 
     // ----------------------------
     // Guardrails (instead of allowlist)
@@ -467,6 +503,13 @@ public final class DataFakerImpl {
         if (s == null) return null;
         return s.length() <= max ? s : s.substring(0, max);
     }
+
+    public static String buildXPath(String entityName, String constraint) {
+		final String base = "//" + entityName;
+		final String c = (constraint == null) ? "" : constraint.trim();
+		if (c.isEmpty()) return base;
+		return c.startsWith("[") ? (base + c) : (base + "[" + c + "]");
+	}
 
     // ----------------------------
     // Types
