@@ -12,12 +12,12 @@ package dataprotection.actions;
 import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.UserAction;
 
-public class JA_Entity_Count_WithXPath extends UserAction<java.lang.Long>
+public class JA_ConfigurationEntity_Count_WithXPath extends UserAction<java.lang.Long>
 {
 	private final java.lang.String EntityName;
 	private final java.lang.String XPathConstraint;
 
-	public JA_Entity_Count_WithXPath(
+	public JA_ConfigurationEntity_Count_WithXPath(
 		IContext context,
 		java.lang.String _entityName,
 		java.lang.String _xPathConstraint
@@ -51,7 +51,7 @@ public class JA_Entity_Count_WithXPath extends UserAction<java.lang.Long>
 	@java.lang.Override
 	public java.lang.String toString()
 	{
-		return "JA_Entity_Count_WithXPath";
+		return "JA_ConfigurationEntity_Count_WithXPath";
 	}
 
 	// BEGIN EXTRA CODE
