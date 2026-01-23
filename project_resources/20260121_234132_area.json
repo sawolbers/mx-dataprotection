@@ -1,0 +1,78 @@
+[
+	{
+		"Name": "Noord",
+		"Addresses": [
+			{
+				"Street": "Van Heukelomlaan",
+				"Number": "18",
+				"Zipcode": "3571 SV",
+				"City": "Utrecht",
+				"Person": {
+					"Name": "Stephan Wolbers",
+					"BSN": "123456789",
+					"BirthDate": "1989-03-13T23:15:00.948Z",
+					"StartDate": "2025-03-01T10:36:41.607Z",
+					"EndDate": "2030-03-01T20:36:57.894Z",
+					"DateOfDeath": "2069-03-13T13:21:54.942Z"
+				}
+			},
+			{
+				"Street": "Adelaarstraat",
+				"Number": "45",
+				"Zipcode": "3514 CB",
+				"City": "Utrecht"
+			}
+		]
+	},
+	{
+		"Name": "Oost",
+		"Addresses": [
+			{
+				"Street": "Biltstraat",
+				"Number": "132",
+				"Zipcode": "3572 BG",
+				"City": "Utrecht"
+			},
+			{
+				"Street": "Nachtdijk",
+				"Number": "7",
+				"Zipcode": "3581 SD",
+				"City": "Utrecht"
+			}
+		]
+	},
+	{
+		"Name": "Zuid",
+		"Addresses": [
+			{
+				"Street": "Beneluxlaan",
+				"Number": "901",
+				"Zipcode": "3527 HT",
+				"City": "Utrecht"
+			},
+			{
+				"Street": "Vaartsche Rijnstraat",
+				"Number": "28",
+				"Zipcode": "3521 ZZ",
+				"City": "Utrecht"
+			}
+		]
+	},
+	{
+		"Name": "West",
+		"Addresses": [
+			{
+				"Street": "Kanaalstraat",
+				"Number": "211",
+				"Zipcode": "3531 CH",
+				"City": "Utrecht"
+			},
+			{
+				"Street": "Havikstraat",
+				"Number": "14",
+				"Zipcode": "3514 TH",
+				"City": "Utrecht"
+			}
+		]
+	}
+]
